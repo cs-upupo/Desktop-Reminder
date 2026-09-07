@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "DesktopReminder",
+  "outputfilename": "桌面提醒",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dir": "frontend",
+  "assetdir": "frontend",
+  "reloaddirs": "frontend",
+  "wailsjsdir": "frontend",
+  "devServer": "127.0.0.1:34115",
+  "info": {
+    "companyName": "DesktopReminder",
+    "productName": "桌面提醒",
+    "productVersion": "1.1.0",
+    "copyright": "桌面提醒",
+    "comments": "安静、简单的 Windows 桌面提醒工具"
+  }
+}

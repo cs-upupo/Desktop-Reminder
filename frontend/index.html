@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>桌面提醒</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></div>
+        <div><h1>桌面提醒</h1><p>给专注留一点呼吸的时间。</p></div>
+      </div>
+      <span class="quiet-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-6 4H2v6h3l6 4zM17 9l5 6M22 9l-5 6"/></svg>始终无声</span>
+    </header>
+
+    <div class="workspace">
+      <section class="timer-card" aria-label="提醒倒计时">
+        <div class="timer-heading"><span class="eyebrow">下一次提醒</span><span id="status" class="status"><i></i>准备就绪</span></div>
+        <div class="clock">
+          <svg class="ring" viewBox="0 0 260 260" aria-hidden="true"><circle class="ring-track" cx="130" cy="130" r="115"/><circle id="ring-progress" class="ring-progress" cx="130" cy="130" r="115" pathLength="100"/></svg>
+          <div class="clock-content"><span id="clock-caption">留一点时间给自己</span><div id="countdown" role="timer" aria-live="off">30:00</div><span id="clock-unit">分钟 / 秒</span></div>
+        </div>
+        <p id="next-time" class="next-time">点击开始，开启第一轮提醒</p>
+        <div class="timer-actions"><button id="start" class="button primary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg><span>开始提醒</span></button><button id="pause" class="button secondary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>暂停</button></div>
+        <div class="timer-note"><span class="small-dot"></span>收至托盘后，提醒依然继续</div>
+      </section>
+
+      <section class="settings-card" aria-label="提醒设置">
+        <div class="section-heading"><h2>提醒设置</h2><span id="save-state" class="save-state">正在读取…</span></div>
+        <label for="content">想提醒自己什么？</label>
+        <div class="textarea-wrap"><textarea id="content" maxlength="1000" rows="4" spellcheck="false" placeholder="例如：起身走走，喝一杯水。" disabled></textarea><span id="character-count">0 / 500</span></div>
+        <div class="interval-label"><label for="interval">每隔多久提醒一次？</label></div>
+        <div class="number-wrap"><input id="interval" type="number" inputmode="numeric" min="1" max="10080" step="1" value="30" aria-describedby="interval-help" disabled><span>分钟</span></div>
+        <div class="presets" aria-label="常用间隔"><button data-minutes="15" disabled>15 分钟</button><button data-minutes="30" disabled>30 分钟</button><button data-minutes="60" disabled>60 分钟</button></div>
+        <p id="interval-help" class="field-hint">支持 1～10080 分钟，暂停后可修改。</p>
+        <div class="notification-info"><div class="info-icon" aria-hidden="true">✓</div><div><strong>安静提醒，不打断思路</strong><p>到点显示 Windows 桌面通知，<br>不播放声音。</p></div></div>
+        <div class="notification-actions">
+          <button id="test" class="test-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span>测试无声通知</span></button>
+          <button id="settings" class="settings-button" disabled>系统通知设置 <span aria-hidden="true">↗</span></button>
+        </div>
+      </section>
+    </div>
+
+    <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+    <div id="warning" class="message error" role="alert" hidden></div>
+    <footer><span id="last-notification">还没有发送通知</span><span>叉号收至托盘 · 右键托盘可退出</span></footer>
+    <p class="system-note">未看到通知？请检查 Windows 通知设置与“勿扰 / 专注助手”。电脑休眠时无法提醒，唤醒后会补发一次。</p>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>

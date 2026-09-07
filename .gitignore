@@ -1,0 +1,8 @@
+/build/bin/
+/build/windows/icon.ico
+/*.syso
+/release/
+/work/
+/frontend/wailsjs/
+*.test
+*.test.exe
