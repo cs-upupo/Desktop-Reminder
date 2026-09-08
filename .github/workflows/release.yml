@@ -60,15 +60,28 @@ jobs:
           } else {
             Set-Content -LiteralPath release-notes.md -Encoding UTF8 -Value "桌面提醒 v$version Windows 64 位版本。下载 ZIP，解压后运行桌面提醒.exe。"
           }
+
+          $portableExe = Join-Path 'release' 'DesktopReminder.exe'
+          Copy-Item -LiteralPath (Join-Path ("release/windows-amd64-v$version") '桌面提醒.exe') -Destination $portableExe -Force
           $files = @(
             (Join-Path 'release' ("DesktopReminder-windows-amd64-v$version.zip")),
-            (Join-Path ("release/windows-amd64-v$version") '桌面提醒.exe')
+            $portableExe
           )
           $checksums = foreach ($file in $files) {
             $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256
             '{0}  {1}' -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $file)
           }
           Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding UTF8 -Value $checksums
+
+      - name: Remove legacy standalone asset name
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = gh release view $env:GITHUB_REF_NAME --json assets --jq '.assets[].name' 2>$null
+          if ($LASTEXITCODE -eq 0 -and $assets -contains 'default.exe') {
+            gh release delete-asset $env:GITHUB_REF_NAME default.exe --yes
+          }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -78,5 +91,5 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release/DesktopReminder-windows-amd64-v*.zip
-            release/windows-amd64-v*/桌面提醒.exe
+            release/DesktopReminder.exe
             release/SHA256SUMS.txt
