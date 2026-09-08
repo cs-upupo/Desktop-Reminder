@@ -20,7 +20,7 @@ func main() {
 	app := NewApp()
 	err := wails.Run(&options.App{
 		Title: "桌面提醒",
-		Width: 900, Height: 740, MinWidth: 740, MinHeight: 690,
+		Width: 1120, Height: 780, MinWidth: 860, MinHeight: 650,
 		BackgroundColour: options.NewRGB(246, 247, 243),
 		AssetServer:      &assetserver.Options{Assets: assets},
 		OnStartup:        app.startup,

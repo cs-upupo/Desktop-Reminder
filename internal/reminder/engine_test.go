@@ -2,226 +2,348 @@ package reminder
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-type recordingNotifier struct {
-	messages []string
-	err      error
+type fakeNotifier struct {
+	mu    sync.Mutex
+	calls []string
+	err   error
 }
 
-func (n *recordingNotifier) Notify(ctx context.Context, title, content string) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
+func (f *fakeNotifier) Notify(ctx context.Context, title, content string) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	n.messages = append(n.messages, content)
-	return n.err
+	f.mu.Lock()
+	f.calls = append(f.calls, title+"|"+content)
+	err := f.err
+	f.mu.Unlock()
+	return err
 }
 
-func fixture(t *testing.T) (*Engine, *recordingNotifier, *time.Time) {
+func (f *fakeNotifier) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+type testClock struct {
+	mu    sync.Mutex
+	value time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.value
+}
+
+func (c *testClock) Add(value time.Duration) {
+	c.mu.Lock()
+	c.value = c.value.Add(value)
+	c.mu.Unlock()
+}
+
+func testDirectory(t *testing.T) string {
 	t.Helper()
-	dir, err := ioutil.TempDir("", "desktop-reminder-test-")
+	directory, err := ioutil.TempDir("", "desktop-reminder-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	n := &recordingNotifier{}
-	e := NewEngine(filepath.Join(dir, "config.json"), n)
-	t.Cleanup(e.Close)
-	now := time.Date(2026, 9, 7, 9, 0, 0, 0, time.Local)
-	e.now = func() time.Time { return now }
-	return e, n, &now
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	return directory
 }
 
-func TestPauseResumeAndNoDuplicateTimers(t *testing.T) {
-	e, n, now := fixture(t)
-	cfg := Config{Content: "喝水", IntervalMinutes: 1}
-	if _, err := e.Start(cfg); err != nil {
-		t.Fatal(err)
-	}
-	*now = now.Add(20 * time.Second)
-	state, err := e.Start(cfg)
-	if err != nil || state.RemainingMS != 40000 {
-		t.Fatalf("double start reset timer: %+v %v", state, err)
-	}
-	state = e.Pause()
-	if state.Running || state.RemainingMS != 40000 {
-		t.Fatalf("pause: %+v", state)
-	}
-	*now = now.Add(3 * time.Minute)
-	e.checkDue()
-	if len(n.messages) != 0 || e.State().RemainingMS != 40000 {
-		t.Fatal("paused reminder advanced")
-	}
-	if _, err := e.Start(cfg); err != nil {
-		t.Fatal(err)
-	}
-	*now = now.Add(39 * time.Second)
-	e.checkDue()
-	if len(n.messages) != 0 {
-		t.Fatal("reminder arrived early")
-	}
-	*now = now.Add(time.Second)
-	e.checkDue()
-	e.checkDue()
-	if len(n.messages) != 1 || e.State().RemainingMS != 60000 {
-		t.Fatal("deadline must send exactly once and repeat")
+func testEngine(t *testing.T, now time.Time, notifier *fakeNotifier) (*Engine, *testClock) {
+	t.Helper()
+	clock := &testClock{value: now}
+	engine := newEngine(filepath.Join(testDirectory(t), "config.json"), notifier, clock.Now)
+	return engine, clock
+}
+
+func waitFor(t *testing.T, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for asynchronous notification")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
-func TestSleepWakeCoalescesMissedReminders(t *testing.T) {
-	e, n, now := fixture(t)
-	if _, err := e.Start(Config{Content: "休息", IntervalMinutes: 1}); err != nil {
-		t.Fatal(err)
-	}
-	*now = now.Add(12 * time.Hour)
-	for i := 0; i < 5; i++ {
-		e.checkDue()
-	}
-	if len(n.messages) != 1 || e.State().RemainingMS != 60000 {
-		t.Fatal("wake must send one notification, without backlog")
-	}
-}
-
-func TestConfigurationRestoresPausedAndIntervalChangesReset(t *testing.T) {
-	e, _, now := fixture(t)
-	cfg := Config{Content: "中文 & <文本> 😀", IntervalMinutes: 1}
-	if _, err := e.Start(cfg); err != nil {
-		t.Fatal(err)
-	}
-	*now = now.Add(20 * time.Second)
-	e.Pause()
-	cfg.Content = "新的内容"
-	state, err := e.SaveConfig(cfg)
-	if err != nil || state.RemainingMS != 40000 {
-		t.Fatalf("content update: %+v %v", state, err)
-	}
-	cfg.IntervalMinutes = 2
-	state, err = e.SaveConfig(cfg)
-	if err != nil || state.RemainingMS != 120000 || state.Started {
-		t.Fatalf("interval update: %+v %v", state, err)
-	}
-	restored := NewEngine(e.path, &recordingNotifier{})
-	defer restored.Close()
-	state = restored.State()
-	if state.Running || state.Config != cfg || state.RemainingMS != 120000 {
-		t.Fatalf("restored: %+v", state)
-	}
-}
-
-func TestSaveFailureDoesNotStartOrMutateConfiguration(t *testing.T) {
-	e, _, _ := fixture(t)
-	parent := filepath.Join(filepath.Dir(e.path), "file-not-directory")
-	if err := ioutil.WriteFile(parent, []byte("existing data"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	e.path = filepath.Join(parent, "config.json")
-	original := e.State().Config
-	if _, err := e.Start(Config{Content: "新设置", IntervalMinutes: 1}); err == nil {
-		t.Fatal("expected failed save")
-	}
-	if e.State().Running || e.State().Config != original {
-		t.Fatal("save failure changed active settings")
-	}
-}
-
-func TestCorruptConfigurationIsBackedUp(t *testing.T) {
-	e, _, _ := fixture(t)
-	data := []byte("{broken config}")
-	if err := ioutil.WriteFile(e.path, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	restored := NewEngine(e.path, &recordingNotifier{})
-	defer restored.Close()
-	files, err := filepath.Glob(e.path + ".invalid-*")
-	if err != nil || len(files) != 1 || restored.State().ConfigWarning == "" {
-		t.Fatal("missing corrupt config backup or warning")
-	}
-	backup, err := ioutil.ReadFile(files[0])
-	if err != nil || string(backup) != string(data) {
-		t.Fatal("backup content changed")
-	}
-}
-
-func TestInvalidConfigurationRejected(t *testing.T) {
-	for _, cfg := range []Config{{"", 1}, {"  ", 1}, {"a", 0}, {"a", -1}, {"a", 10081}, {strings.Repeat("中", 501), 1}, {"a\x00b", 1}} {
-		if _, err := cfg.Validate(); err == nil {
-			t.Fatalf("accepted invalid config: %+v", cfg)
+func taskByName(t *testing.T, state State, name string) Task {
+	t.Helper()
+	for i := range state.Tasks {
+		if state.Tasks[i].Name == name {
+			return state.Tasks[i]
 		}
 	}
+	t.Fatalf("task %q not found", name)
+	return Task{}
 }
 
-func TestNotificationFailureIsVisibleAndNextCycleContinues(t *testing.T) {
-	e, n, now := fixture(t)
-	n.err = errors.New("notification unavailable")
-	if _, err := e.Start(Config{Content: "休息", IntervalMinutes: 1}); err != nil {
+func TestMultipleTasksTriggerAndDailyCompletionAppearsInDayView(t *testing.T) {
+	zone := time.FixedZone("CST", 8*60*60)
+	notifier := &fakeNotifier{}
+	engine, clock := testEngine(t, time.Date(2026, 9, 8, 8, 59, 0, 0, zone), notifier)
+
+	intervalState, err := engine.SaveTask(TaskInput{
+		Name: "活动一下", Content: "站起来走一走", Kind: KindInterval,
+		IntervalMinutes: 1, Active: true,
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	*now = now.Add(time.Minute)
-	e.checkDue()
-	if e.State().NotificationError == "" || !e.State().Running || e.State().NotificationCount != 0 {
-		t.Fatal("failure not exposed")
-	}
-	n.err = nil
-	*now = now.Add(time.Minute)
-	e.checkDue()
-	if e.State().NotificationError != "" || e.State().NotificationCount != 1 {
-		t.Fatal("did not recover")
-	}
-}
-
-func TestTestNotificationDoesNotChangeCountdown(t *testing.T) {
-	e, n, _ := fixture(t)
-	before := e.State()
-	if err := e.TestNotification(Config{Content: "测试", IntervalMinutes: 1}); err != nil {
+	interval := taskByName(t, intervalState, "活动一下")
+	_, err = engine.SaveTask(TaskInput{
+		Name: "提交日报", Content: "整理并提交日报", Kind: KindScheduled,
+		ScheduleMode: ScheduleDaily, DailyTime: "09:00:00", RepeatMinutes: 5, Active: true,
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	after := e.State()
-	if len(n.messages) != 1 || before.RemainingMS != after.RemainingMS || after.Running || before.Config != after.Config {
-		t.Fatal("test notification changed timer")
+
+	clock.Add(time.Minute)
+	engine.checkDue()
+	waitFor(t, func() bool { return notifier.count() == 2 })
+	state := engine.State()
+	interval = taskByName(t, state, "活动一下")
+	daily := taskByName(t, state, "提交日报")
+	if !interval.AwaitingCompletion || !daily.AwaitingCompletion {
+		t.Fatalf("both tasks should await completion: %+v %+v", interval, daily)
 	}
-}
-
-type blockingNotifier struct {
-	entered chan struct{}
-	exited  chan struct{}
-}
-
-func (n *blockingNotifier) Notify(ctx context.Context, title, content string) error {
-	close(n.entered)
-	<-ctx.Done()
-	close(n.exited)
-	return ctx.Err()
-}
-
-func TestPauseCancelsInFlightNotification(t *testing.T) {
-	e, _, now := fixture(t)
-	n := &blockingNotifier{entered: make(chan struct{}), exited: make(chan struct{})}
-	e.notifier = n
-	if _, err := e.Start(Config{Content: "取消", IntervalMinutes: 1}); err != nil {
+	if _, err = engine.CompleteTask(interval.ID); err != nil {
 		t.Fatal(err)
 	}
-	*now = now.Add(time.Minute)
-	done := make(chan struct{})
-	go func() { e.checkDue(); close(done) }()
-	select {
-	case <-n.entered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("notifier did not start")
+	state, err = engine.CompleteTask(daily.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	e.Pause()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("pause did not cancel notifier")
+	daily = taskByName(t, state, "提交日报")
+	if !daily.Active || daily.AwaitingCompletion || dateForMilliseconds(daily.NextAt, zone) != "2026-09-09" {
+		t.Fatalf("daily task should wait for tomorrow: %+v", daily)
 	}
-	if e.State().NotificationError != "" || e.State().NotificationCount != 0 {
-		t.Fatal("cancel treated as notification failure or success")
+	view, err := engine.DayView("2026-09-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Total != 2 || view.Completed != 2 || view.Pending != 0 {
+		t.Fatalf("unexpected day view: %+v", view)
+	}
+}
+
+func TestOneTimeTaskRepeatsUntilCompleted(t *testing.T) {
+	zone := time.FixedZone("CST", 8*60*60)
+	notifier := &fakeNotifier{}
+	start := time.Date(2026, 9, 8, 10, 0, 0, 0, zone)
+	engine, clock := testEngine(t, start, notifier)
+	state, err := engine.SaveTask(TaskInput{
+		Name: "线上会议", Content: "进入会议室", Kind: KindScheduled,
+		ScheduleMode: ScheduleOnce, OnceAt: milliseconds(start.Add(time.Minute)),
+		RepeatMinutes: 1, Active: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := taskByName(t, state, "线上会议")
+	clock.Add(time.Minute)
+	engine.checkDue()
+	waitFor(t, func() bool { return notifier.count() == 1 })
+	clock.Add(time.Minute)
+	engine.checkDue()
+	waitFor(t, func() bool { return notifier.count() == 2 })
+	state, err = engine.CompleteTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task = taskByName(t, state, "线上会议")
+	if !task.Completed || task.Active || task.AwaitingCompletion || task.NotificationCount != 2 {
+		t.Fatalf("unexpected completed task: %+v", task)
+	}
+	if _, err = engine.StartTask(task.ID); err == nil {
+		t.Fatal("completed one-time task should require a new execution time")
+	}
+	view, err := engine.DayView("2026-09-08")
+	if err != nil || view.Completed != 1 {
+		t.Fatalf("completion missing from day view: %+v, %v", view, err)
+	}
+}
+
+func TestPauseResumeAndScheduleEdit(t *testing.T) {
+	notifier := &fakeNotifier{}
+	engine, clock := testEngine(t, time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC), notifier)
+	state, err := engine.SaveTask(TaskInput{
+		Name: "喝水", Content: "喝一杯水", Kind: KindInterval,
+		IntervalMinutes: 10, Active: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := taskByName(t, state, "喝水")
+	clock.Add(3 * time.Minute)
+	state, err = engine.PauseTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task = taskByName(t, state, "喝水")
+	if task.PausedRemainingMS != durationMilliseconds(7) {
+		t.Fatalf("pause did not preserve seven minutes: %+v", task)
+	}
+	clock.Add(time.Hour)
+	state, err = engine.StartTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task = taskByName(t, state, "喝水")
+	expected := milliseconds(clock.Now().Add(7 * time.Minute))
+	if task.NextAt != expected {
+		t.Fatalf("resume changed remaining duration: got %d want %d", task.NextAt, expected)
+	}
+
+	input := taskInputFromTask(task)
+	input.Content = "补充一杯温水"
+	state, err = engine.SaveTask(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task = taskByName(t, state, "喝水")
+	if task.NextAt != expected {
+		t.Fatal("content-only edit reset the countdown")
+	}
+	input = taskInputFromTask(task)
+	input.IntervalMinutes = 20
+	state, err = engine.SaveTask(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task = taskByName(t, state, "喝水")
+	if task.NextAt != milliseconds(clock.Now().Add(20*time.Minute)) {
+		t.Fatal("schedule change did not start a full new interval")
+	}
+	input = taskInputFromTask(task)
+	input.IntervalMinutes = 30
+	input.Active = false
+	state, err = engine.SaveTask(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task = taskByName(t, state, "喝水")
+	if task.Active || task.PausedRemainingMS != durationMilliseconds(30) {
+		t.Fatalf("paused schedule edit did not preserve a full new interval: %+v", task)
+	}
+}
+
+func TestCompletingPausedDailyTaskKeepsItPaused(t *testing.T) {
+	zone := time.FixedZone("CST", 8*60*60)
+	notifier := &fakeNotifier{}
+	engine, clock := testEngine(t, time.Date(2026, 9, 8, 8, 59, 0, 0, zone), notifier)
+	state, err := engine.SaveTask(TaskInput{
+		Name: "晨会", Content: "参加晨会", Kind: KindScheduled,
+		ScheduleMode: ScheduleDaily, DailyTime: "09:00:00", RepeatMinutes: 5, Active: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := taskByName(t, state, "晨会")
+	clock.Add(time.Minute)
+	engine.checkDue()
+	waitFor(t, func() bool { return notifier.count() == 1 })
+	if _, err = engine.PauseTask(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	state, err = engine.CompleteTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task = taskByName(t, state, "晨会")
+	if task.Active || task.NextAt != 0 || task.AwaitingCompletion || task.Completed {
+		t.Fatalf("paused daily task was unexpectedly re-enabled: %+v", task)
+	}
+}
+
+func TestDeletingTaskPreservesCompletedDateRecord(t *testing.T) {
+	zone := time.FixedZone("CST", 8*60*60)
+	notifier := &fakeNotifier{}
+	engine, clock := testEngine(t, time.Date(2026, 9, 8, 14, 0, 0, 0, zone), notifier)
+	state, err := engine.SaveTask(TaskInput{
+		Name: "一次记录", Content: "保留完成历史", Kind: KindInterval,
+		IntervalMinutes: 1, Active: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := taskByName(t, state, "一次记录")
+	clock.Add(time.Minute)
+	engine.checkDue()
+	waitFor(t, func() bool { return notifier.count() == 1 })
+	if _, err = engine.CompleteTask(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	state, err = engine.DeleteTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Tasks) != 0 {
+		t.Fatal("deleted task is still visible")
+	}
+	view, err := engine.DayView("2026-09-08")
+	if err != nil || view.Total != 1 || view.Completed != 1 || view.Items[0].Name != "一次记录" {
+		t.Fatalf("deleted completion was not preserved: %+v, %v", view, err)
+	}
+}
+
+func TestLegacyConfigurationMigratesToPausedTask(t *testing.T) {
+	directory := testDirectory(t)
+	path := filepath.Join(directory, "config.json")
+	data, err := json.Marshal(legacyConfig{Content: "旧提醒", IntervalMinutes: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ioutil.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	clock := &testClock{value: time.Date(2026, 9, 8, 8, 0, 0, 0, time.Local)}
+	engine := newEngine(path, &fakeNotifier{}, clock.Now)
+	state := engine.State()
+	if len(state.Tasks) != 1 || state.Tasks[0].Active || state.Tasks[0].Content != "旧提醒" || state.Tasks[0].IntervalMinutes != 30 {
+		t.Fatalf("legacy migration failed: %+v", state)
+	}
+	if state.ConfigWarning == "" {
+		t.Fatal("migration should be explained to the user")
+	}
+}
+
+func TestInvalidInputsAndNotificationFailure(t *testing.T) {
+	notifier := &fakeNotifier{err: errors.New("通知权限关闭")}
+	engine, clock := testEngine(t, time.Date(2026, 9, 8, 16, 0, 0, 0, time.UTC), notifier)
+	if _, err := engine.SaveTask(TaskInput{Name: "", Content: "内容", Kind: KindInterval, IntervalMinutes: 1}); err == nil {
+		t.Fatal("empty task name was accepted")
+	}
+	if _, err := engine.SaveTask(TaskInput{Name: "任务", Content: "内容", Kind: KindScheduled, ScheduleMode: ScheduleDaily, DailyTime: "25:00:00", RepeatMinutes: 1}); err == nil {
+		t.Fatal("invalid daily time was accepted")
+	}
+	state, err := engine.SaveTask(TaskInput{Name: "失败测试", Content: "通知", Kind: KindInterval, IntervalMinutes: 1, Active: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := taskByName(t, state, "失败测试")
+	clock.Add(time.Minute)
+	engine.checkDue()
+	waitFor(t, func() bool {
+		state = engine.State()
+		task = taskByName(t, state, "失败测试")
+		return task.LastError != ""
+	})
+	if task.NotificationCount != 0 || !task.AwaitingCompletion {
+		t.Fatalf("notification failure corrupted task state: %+v", task)
 	}
 }

@@ -39,8 +39,6 @@ if ($null -ne $notifier.Setting -and $notifier.Setting -ne [Windows.UI.Notificat
 }
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 $toast.ExpirationTime = [DateTimeOffset]::Now.AddMinutes(2)
-$toast.Tag = 'reminder'
-$toast.Group = 'DesktopReminder'
 $notifier.Show($toast)
 `
 

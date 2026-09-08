@@ -108,34 +108,58 @@ func (a *App) GetState() (reminder.State, error) {
 	return e.State(), nil
 }
 
-func (a *App) SaveConfig(config reminder.Config) (reminder.State, error) {
+func (a *App) SaveTask(input reminder.TaskInput) (reminder.State, error) {
 	e, err := a.current()
 	if err != nil {
 		return reminder.State{}, err
 	}
-	return e.SaveConfig(config)
+	return e.SaveTask(input)
 }
 
-func (a *App) Start(config reminder.Config) (reminder.State, error) {
+func (a *App) DeleteTask(id string) (reminder.State, error) {
 	e, err := a.current()
 	if err != nil {
 		return reminder.State{}, err
 	}
-	return e.Start(config)
+	return e.DeleteTask(id)
 }
 
-func (a *App) Pause() (reminder.State, error) {
+func (a *App) StartTask(id string) (reminder.State, error) {
 	e, err := a.current()
 	if err != nil {
 		return reminder.State{}, err
 	}
-	return e.Pause(), nil
+	return e.StartTask(id)
 }
 
-func (a *App) TestNotification(config reminder.Config) error {
+func (a *App) PauseTask(id string) (reminder.State, error) {
+	e, err := a.current()
+	if err != nil {
+		return reminder.State{}, err
+	}
+	return e.PauseTask(id)
+}
+
+func (a *App) CompleteTask(id string) (reminder.State, error) {
+	e, err := a.current()
+	if err != nil {
+		return reminder.State{}, err
+	}
+	return e.CompleteTask(id)
+}
+
+func (a *App) TestTaskNotification(id string) error {
 	e, err := a.current()
 	if err != nil {
 		return err
 	}
-	return e.TestNotification(config)
+	return e.TestTaskNotification(id)
+}
+
+func (a *App) GetDayView(date string) (reminder.DayView, error) {
+	e, err := a.current()
+	if err != nil {
+		return reminder.DayView{}, err
+	}
+	return e.DayView(date)
 }

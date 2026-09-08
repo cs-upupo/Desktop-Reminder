@@ -1,0 +1,53 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    env:
+      GOARCH: amd64
+      CGO_ENABLED: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check frontend syntax
+        run: node --check frontend/app.js
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Compile all packages without running tests
+        run: go test -run "^$" ./...
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+
+      - name: Build Windows executable
+        run: wails build -platform windows/amd64 -webview2 error
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DesktopReminder-windows-amd64
+          path: build/bin/桌面提醒.exe
+          if-no-files-found: error
+          retention-days: 14

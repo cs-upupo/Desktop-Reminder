@@ -12,7 +12,7 @@ try {
     Copy-Item -LiteralPath (Join-Path 'build\bin' $binaryName) -Destination $distributionDirectory -Force
     Copy-Item -LiteralPath 'QUICK_START.txt' -Destination (Join-Path $distributionDirectory 'README.txt') -Force
     & (Join-Path $PSScriptRoot 'notices.ps1') -Destination (Join-Path $distributionDirectory 'THIRD_PARTY_NOTICES.txt')
-    $archive = Join-Path $projectDirectory 'release\DesktopReminder-windows-amd64.zip'
+    $archive = Join-Path $projectDirectory ('release\DesktopReminder-windows-amd64-v' + $project.info.productVersion + '.zip')
     $distributionFiles = @(Get-ChildItem -LiteralPath $distributionDirectory -File | Select-Object -ExpandProperty FullName)
     Compress-Archive -LiteralPath $distributionFiles -DestinationPath $archive -Force
     Write-Host "Distribution package: $archive"

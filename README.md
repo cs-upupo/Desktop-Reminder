@@ -1,96 +1,96 @@
 # 桌面提醒
 
-基于 Go + Wails 的 Windows 桌面提醒工具。前端使用本地 HTML / CSS / JavaScript，无 npm 依赖，界面资源编译进 exe。
+[![Windows CI](https://github.com/cs-upupo/Desktop-reminder/actions/workflows/ci.yml/badge.svg)](https://github.com/cs-upupo/Desktop-reminder/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/cs-upupo/Desktop-reminder?display_name=tag)](https://github.com/cs-upupo/Desktop-reminder/releases/latest)
 
-## 直接使用
+基于 Go + Wails 的 Windows 多任务提醒工具。界面资源全部编译进 exe，无 npm 依赖；提醒、任务配置和完成记录仅保存在本机。
 
-双击 `build/bin/桌面提醒.exe`，或解压 `release/DesktopReminder-windows-amd64.zip` 后运行。分发包内只包含程序、使用说明和第三方许可。
+## 功能
 
-- 自定义提醒内容，最多 500 个字符，支持中文与多行。
-- 自定义 1～10080 的整数分钟，附带 15 / 30 / 60 分钟快捷选项。
-- 开始 / 暂停 / 继续；暂停保留剩余时间，修改间隔重置为完整新间隔。
-- Go 后台计时，界面只负责显示；最小化后仍工作。
-- Windows 原生桌面通知，明确设置 `<audio silent="true" />`，无声音。
-- 自动保存有效设置；下次启动恢复内容和间隔，默认未开始。
-- 休眠后最多补发一次到期提醒，避免连续补发大量通知。
+- 同时创建并独立管理多个任务，可编辑、启用、暂停、完成、测试通知或删除。
+- 循环任务：按 1～10080 分钟的固定间隔提醒。
+- 每日定时任务：每天在指定的 `时:分:秒` 首次提醒。
+- 一次性任务：在指定的 `年-月-日 时:分:秒` 首次提醒。
+- 首次提醒后，按单独设置的间隔继续提醒，直到用户点击完成。
+- 每日任务完成后自动安排到次日；一次性任务完成后结束；循环任务可重新开始。
+- 按日期查看当天任务、完成数、未完成数、逐项状态和完成时间。
+- 任务、倒计时、等待完成状态和历史记录自动保存，重新启动后继续恢复。
+- Windows 原生静音通知；主界面可直接打开系统通知设置。
+- 点击叉号隐藏到系统托盘，任务继续运行；托盘右键可恢复窗口或退出。
 - 单实例运行，重复打开会显示已有窗口。
-- 点击叉号隐藏至右下角系统托盘，计时继续；托盘菜单提供打开主窗口、系统通知设置、退出应用。
-- 主界面提供“系统通知设置”按钮，直达本机通知设置页面。
 
-从托盘右键“退出应用”停止程序；不提供开机自启动。托盘未能初始化时，叉号退回正常退出，避免出现找不到窗口的后台进程。电脑关机 / 休眠期间无法发送通知。Windows 勿扰 / 专注助手可能隐藏横幅；发送成功表示 Windows 接收了请求，不保证横幅一定显示。暂停不能撤回 Windows 已经接收的通知。
+旧版 `%APPDATA%\DesktopReminder\config.json` 会自动迁移为一个暂停的循环任务。完成后再删除任务，日期记录仍会保留完成快照。
 
-升级到 1.1.0 时请先退出旧程序，再运行新版。旧 1.0.0 点击叉号即可退出；新版在托盘右键退出。分发文件放在带版本号的目录，避免覆盖正在运行的旧程序。
+## 直接运行和分发
+
+本机双击：
+
+```text
+build\bin\桌面提醒.exe
+```
+
+发给别人时发送整个文件：
+
+```text
+release\DesktopReminder-windows-amd64-v2.0.0.zip
+```
+
+公开版本也可从 [GitHub Releases](https://github.com/cs-upupo/Desktop-reminder/releases) 下载；每个版本同时提供 ZIP、单独的 exe 和 SHA-256 校验文件。
+
+对方解压后双击 `桌面提醒.exe` 即可。目标电脑需要 Windows 10 / 11 64 位和 Microsoft Edge WebView2 Runtime，不需要 Go、Node 或 Wails。
 
 ## 开发与构建
 
-当前固定 Wails **v2.15.0**，依赖 **Go 1.25.0 或更高版本**；本机已使用 Go 1.25.7 验证。自有 Go 代码不使用泛型、`any` 等高于 Go 1.14 的语言语法；框架与资源嵌入需要现代 Go 工具链，整个 Wails 项目不能使用 Go 1.14 编译。
+项目固定使用 Wails **v2.15.0**，需要 **Go 1.25.0 或更高版本**。自有 Go 代码不使用泛型、`any` 等高于 Go 1.14 的语言语法；Wails 与 `embed` 仍要求现代 Go 工具链。
 
-最终用户需要 Windows 10 / 11 64 位与 Microsoft Edge WebView2 Runtime，不需要 Go、Node 或 Wails。前端没有构建依赖，Node / npm 不是必需项。
-
-在项目目录执行：
+在项目目录运行：
 
 ```powershell
 wails dev
 wails build
 ```
 
-或双击：
+也可以直接双击：
 
-- `dev.bat`：检查 Go / 固定版本 Wails，运行开发窗口。
-- `build.bat`：检查环境，构建 Windows amd64 版本，生成可分发 ZIP。
+- `dev.bat`：检查 Go 和固定版本 Wails，然后打开开发窗口。
+- `build.bat`：检查环境，构建 Windows amd64 exe，并生成包含说明和许可的 ZIP。
 
-脚本仅对当前进程设置 `GOARCH=amd64`，不修改全局 Go 配置。Wails 缺失时会从配置的公开 Go 模块源下载固定版本。Go 缺失或低于 1.25 时会明确提示。
+构建脚本只对当前进程设置 `GOARCH=amd64`，不修改全局 Go 配置。首次安装 Wails 或 Go 模块依赖时需要访问公开依赖源；依赖已有缓存后可以通过 `GOPROXY=off`、`GOSUMDB=off` 离线测试和构建。应用运行本身不联网。
 
-```powershell
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
-```
+## GitHub 发布维护
 
-32 位 Go 宿主交叉安装时，Wails 位于 GOPATH 的 `bin/windows_amd64`。环境检查脚本会将其复制到 `bin/wails.exe`；本机已完成处理。构建脚本使用 `-webview2 error`，缺少 WebView2 的目标电脑显示缺少运行时提示，不自动下载安装。
+- 推送到 `main` 或提交 Pull Request 时，`Windows CI` 会执行前端语法检查、Go 测试和 Windows exe 构建，并保留 14 天的构建产物。
+- 推送与 `wails.json` 版本一致的标签（例如 `v2.0.0`）时，`Publish Release` 会自动运行测试、生成分发包，并创建 GitHub Release。
+- 每个 Release 上传 ZIP、单独的 exe 和 `SHA256SUMS.txt`；版本说明位于 `docs/releases/<版本>.md`。
+- 当前产品是便携 Windows 桌面程序，不发布代码库或容器包。GitHub Packages 保留给未来确有包管理器安装需求的 NuGet 等格式；现阶段用户下载统一使用 Releases。
 
-产物：
-
-```text
-build/bin/桌面提醒.exe
-release/windows-amd64-v1.1.0/桌面提醒.exe
-release/windows-amd64-v1.1.0/README.txt
-release/windows-amd64-v1.1.0/THIRD_PARTY_NOTICES.txt
-release/DesktopReminder-windows-amd64.zip
-```
-
-## 实现与数据
+## 项目结构与数据
 
 ```text
-main.go                  Wails 窗口、嵌入资源、单实例
-app.go                   桌面 Go / JavaScript 绑定
-tray_windows.go          独立系统线程上的托盘菜单、隐藏 / 显示 / 退出
-internal/reminder/       计时、配置、Windows 静音通知、核心测试
-frontend/                界面与交互，无外部字体或 CDN
-scripts/                 依赖检查、开发、构建、第三方许可收集
-build/appicon.png        应用图标
-build/tray.ico           编译进程序的托盘图标
-api_docs/desktop-api.md  本地绑定接口说明
+main.go                  Wails 窗口、资源嵌入与单实例
+app.go                   Go / JavaScript 本地绑定
+tray_windows.go          系统托盘、隐藏、恢复与退出
+internal/reminder/       多任务调度、配置、日期记录、静音通知与测试
+frontend/                任务列表、编辑表单与日期记录界面
+scripts/                 环境检查、开发、构建与许可收集
+api_docs/desktop-api.md  本地绑定接口文档
 ```
 
-配置位置：`%APPDATA%/DesktopReminder/config.json`。同目录临时文件写入、同步、替换，保存失败时保留旧设置并显示错误；损坏文件复制到带时间戳的 `.invalid-*` 文件，显示默认值和告警。提醒内容不会放入分发包。
+数据位置为 `%APPDATA%\DesktopReminder\config.json`。保存采用同目录临时文件写入、同步和替换；文件损坏时会备份为 `.invalid-*` 后显示告警。应用没有数据库，不涉及 SQL。
 
-Windows 通知使用系统 PowerShell 5.1 调用 WinRT；以隐藏窗口运行、12 秒超时，固定脚本与 Base64 数据分离。提醒文本进行 XML 转义，支持特殊符号。应用只在当前用户注册表 `HKCU/Software/Classes/AppUserModelId/DesktopReminder.Silent` 注册通知名称，不要求管理员权限。不修改全局通知或声音设置。部分系统返回空通知权限状态；只有取得明确禁用状态时才阻止发送，否则继续调用 Show，以实际调用结果为准。
+Windows 通知通过系统 PowerShell 5.1 调用 WinRT，脚本与 Base64 数据分离，文本经过 XML 转义，并固定使用 `<audio silent="true" />`。应用只在当前用户注册表登记 `DesktopReminder.Silent`，不需要管理员权限，也不修改全局声音或通知设置。
 
-托盘依赖固定 `github.com/getlantern/systray v1.2.2`，Windows 无需 CGO。托盘在独立且固定的系统线程处理消息，退出时停止提醒并移除图标。“系统通知设置”按钮仅打开 `ms-settings:notifications`，不自动修改系统权限。
-
-应用本身不请求远程服务；开发服务只绑定 `127.0.0.1:34115`。构建环境首次安装依赖时需要联网。没有数据库，不涉及 SQL。
-
-## 本地验证
-
-本项目没有 `controllers/v4` 或 `models/v4`，使用全部包的本地测试和编译检查：
+## 验证
 
 ```powershell
+$env:GOPROXY = 'off'
+$env:GOSUMDB = 'off'
 $env:GOARCH = 'amd64'
 $env:CGO_ENABLED = '0'
+node --check frontend/app.js
 go test ./...
 go test -run '^$' ./...
 git diff --check
 ```
 
-不访问远程业务服务。`internal/reminder/*_test.go` 使用假通知服务及可控时间检查计时行为；原生通知由桌面窗口进行手动验证。
-
-手动验证步骤见 `VERIFICATION.md`。如需离线重复构建，可在已下载依赖后为当前终端设置 `$env:GOPROXY='off'`、`$env:GOSUMDB='off'`。
+详细桌面验证场景见 `VERIFICATION.md`。

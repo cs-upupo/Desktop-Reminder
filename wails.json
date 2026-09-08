@@ -13,8 +13,8 @@
   "info": {
     "companyName": "DesktopReminder",
     "productName": "桌面提醒",
-    "productVersion": "1.1.0",
+    "productVersion": "2.0.0",
     "copyright": "桌面提醒",
-    "comments": "安静、简单的 Windows 桌面提醒工具"
+    "comments": "支持多任务、定时提醒和每日完成记录的 Windows 桌面工具"
   }
 }

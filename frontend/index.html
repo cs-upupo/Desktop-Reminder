@@ -1,55 +1,213 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
   <title>桌面提醒</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="app">
-    <header class="header">
+  <div class="app-shell">
+    <aside class="sidebar">
       <div class="brand">
-        <div class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></div>
-        <div><h1>桌面提醒</h1><p>给专注留一点呼吸的时间。</p></div>
+        <span class="brand-mark" aria-hidden="true">✓</span>
+        <div>
+          <strong>桌面提醒</strong>
+          <span>安静地记住每件事</span>
+        </div>
       </div>
-      <span class="quiet-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-6 4H2v6h3l6 4zM17 9l5 6M22 9l-5 6"/></svg>始终无声</span>
-    </header>
 
-    <div class="workspace">
-      <section class="timer-card" aria-label="提醒倒计时">
-        <div class="timer-heading"><span class="eyebrow">下一次提醒</span><span id="status" class="status"><i></i>准备就绪</span></div>
-        <div class="clock">
-          <svg class="ring" viewBox="0 0 260 260" aria-hidden="true"><circle class="ring-track" cx="130" cy="130" r="115"/><circle id="ring-progress" class="ring-progress" cx="130" cy="130" r="115" pathLength="100"/></svg>
-          <div class="clock-content"><span id="clock-caption">留一点时间给自己</span><div id="countdown" role="timer" aria-live="off">30:00</div><span id="clock-unit">分钟 / 秒</span></div>
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-item active" data-view="tasks" type="button">
+          <span aria-hidden="true">☷</span>
+          任务列表
+        </button>
+        <button class="nav-item" data-view="history" type="button">
+          <span aria-hidden="true">▣</span>
+          日期记录
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="quiet-note">
+          <span class="quiet-dot"></span>
+          <div><strong>静音通知</strong><span>关闭窗口后仍在托盘运行</span></div>
         </div>
-        <p id="next-time" class="next-time">点击开始，开启第一轮提醒</p>
-        <div class="timer-actions"><button id="start" class="button primary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg><span>开始提醒</span></button><button id="pause" class="button secondary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>暂停</button></div>
-        <div class="timer-note"><span class="small-dot"></span>收至托盘后，提醒依然继续</div>
+        <button id="settings-button" class="text-button" type="button">打开 Windows 通知设置</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="page-header">
+        <div>
+          <h1 id="page-title">任务列表</h1>
+          <p id="page-subtitle">安排循环任务和定时任务，到点后持续提醒</p>
+        </div>
+        <button id="new-task-button" class="primary-button" type="button">
+          <span aria-hidden="true">＋</span> 新建任务
+        </button>
+      </header>
+
+      <section id="warning-banner" class="warning-banner hidden" role="status"></section>
+
+      <section id="tasks-view" class="view-panel">
+        <div class="summary-grid">
+          <article class="summary-card">
+            <span class="summary-label">运行中</span>
+            <strong id="active-count">0</strong>
+            <span class="summary-foot"><i class="dot green"></i> 正在等待提醒</span>
+          </article>
+          <article class="summary-card attention">
+            <span class="summary-label">待完成</span>
+            <strong id="waiting-count">0</strong>
+            <span class="summary-foot"><i class="dot orange"></i> 会继续间隔提醒</span>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">全部任务</span>
+            <strong id="total-count">0</strong>
+            <span class="summary-foot"><i class="dot blue"></i> 配置自动保存</span>
+          </article>
+        </div>
+
+        <div class="list-toolbar">
+          <div class="filter-group" role="group" aria-label="筛选任务">
+            <button class="filter-button active" data-filter="all" type="button">全部</button>
+            <button class="filter-button" data-filter="interval" type="button">循环</button>
+            <button class="filter-button" data-filter="scheduled" type="button">定时</button>
+            <button class="filter-button" data-filter="awaiting" type="button">待完成</button>
+            <button class="filter-button" data-filter="completed" type="button">已完成</button>
+          </div>
+          <label class="search-box">
+            <span aria-hidden="true">⌕</span>
+            <input id="task-search" type="search" placeholder="搜索任务" autocomplete="off" />
+          </label>
+        </div>
+
+        <div id="task-list" class="task-list" aria-live="polite"></div>
+        <div id="task-empty" class="empty-state hidden">
+          <span class="empty-icon" aria-hidden="true">✓</span>
+          <h2>这里还没有任务</h2>
+          <p>新建一个循环或定时任务，提醒会在后台安静运行。</p>
+          <button class="secondary-button create-empty" type="button">新建第一个任务</button>
+        </div>
       </section>
 
-      <section class="settings-card" aria-label="提醒设置">
-        <div class="section-heading"><h2>提醒设置</h2><span id="save-state" class="save-state">正在读取…</span></div>
-        <label for="content">想提醒自己什么？</label>
-        <div class="textarea-wrap"><textarea id="content" maxlength="1000" rows="4" spellcheck="false" placeholder="例如：起身走走，喝一杯水。" disabled></textarea><span id="character-count">0 / 500</span></div>
-        <div class="interval-label"><label for="interval">每隔多久提醒一次？</label></div>
-        <div class="number-wrap"><input id="interval" type="number" inputmode="numeric" min="1" max="10080" step="1" value="30" aria-describedby="interval-help" disabled><span>分钟</span></div>
-        <div class="presets" aria-label="常用间隔"><button data-minutes="15" disabled>15 分钟</button><button data-minutes="30" disabled>30 分钟</button><button data-minutes="60" disabled>60 分钟</button></div>
-        <p id="interval-help" class="field-hint">支持 1～10080 分钟，暂停后可修改。</p>
-        <div class="notification-info"><div class="info-icon" aria-hidden="true">✓</div><div><strong>安静提醒，不打断思路</strong><p>到点显示 Windows 桌面通知，<br>不播放声音。</p></div></div>
-        <div class="notification-actions">
-          <button id="test" class="test-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span>测试无声通知</span></button>
-          <button id="settings" class="settings-button" disabled>系统通知设置 <span aria-hidden="true">↗</span></button>
+      <section id="history-view" class="view-panel hidden">
+        <div class="date-toolbar">
+          <button id="previous-day" class="icon-button" type="button" aria-label="前一天">‹</button>
+          <label class="date-picker-wrap">
+            <span>查看日期</span>
+            <input id="history-date" type="date" />
+          </label>
+          <button id="next-day" class="icon-button" type="button" aria-label="后一天">›</button>
+          <button id="today-button" class="secondary-button compact" type="button">回到今天</button>
+        </div>
+
+        <div class="history-summary">
+          <div><span>当日任务</span><strong id="day-total">0</strong></div>
+          <div><span>已完成</span><strong id="day-completed" class="success-text">0</strong></div>
+          <div><span>未完成</span><strong id="day-pending" class="warning-text">0</strong></div>
+          <div class="completion-progress" aria-label="完成进度">
+            <div><span>完成进度</span><b id="day-percent">0%</b></div>
+            <div class="progress-track"><i id="day-progress"></i></div>
+          </div>
+        </div>
+
+        <div id="history-list" class="history-list" aria-live="polite"></div>
+        <div id="history-empty" class="empty-state hidden">
+          <span class="empty-icon calendar" aria-hidden="true">▣</span>
+          <h2>这一天没有任务</h2>
+          <p>切换日期查看其他记录，或返回任务列表新建任务。</p>
         </div>
       </section>
-    </div>
+    </main>
+  </div>
 
-    <div id="message" class="message" role="status" aria-live="polite" hidden></div>
-    <div id="warning" class="message error" role="alert" hidden></div>
-    <footer><span id="last-notification">还没有发送通知</span><span>叉号收至托盘 · 右键托盘可退出</span></footer>
-    <p class="system-note">未看到通知？请检查 Windows 通知设置与“勿扰 / 专注助手”。电脑休眠时无法提醒，唤醒后会补发一次。</p>
-  </main>
-  <script src="/app.js" defer></script>
+  <div id="task-modal" class="modal-backdrop hidden" role="presentation">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <header class="modal-header">
+        <div>
+          <span class="eyebrow" id="modal-eyebrow">创建提醒</span>
+          <h2 id="modal-title">新建任务</h2>
+        </div>
+        <button id="close-modal" class="modal-close" type="button" aria-label="关闭">×</button>
+      </header>
+
+      <form id="task-form" novalidate>
+        <input id="task-id" type="hidden" />
+        <div class="form-grid">
+          <label class="field full">
+            <span>任务名称</span>
+            <input id="task-name" maxlength="80" placeholder="例如：提交日报" required />
+          </label>
+          <label class="field full">
+            <span>提醒内容</span>
+            <textarea id="task-content" maxlength="500" rows="3" placeholder="收到提醒时希望看到的内容" required></textarea>
+            <small><b id="content-count">0</b>/500</small>
+          </label>
+        </div>
+
+        <fieldset class="form-section">
+          <legend>任务类型</legend>
+          <div class="choice-grid two">
+            <label class="choice-card">
+              <input type="radio" name="task-kind" value="interval" checked />
+              <span><b>循环任务</b><small>按固定分钟间隔重复提醒</small></span>
+            </label>
+            <label class="choice-card">
+              <input type="radio" name="task-kind" value="scheduled" />
+              <span><b>定时任务</b><small>每天或指定日期准时提醒</small></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div id="interval-fields" class="form-section field-panel">
+          <label class="field">
+            <span>循环间隔</span>
+            <div class="unit-input"><input id="interval-minutes" type="number" min="1" max="10080" value="30" required /><em>分钟</em></div>
+          </label>
+          <p class="field-help">启用后开始倒计时；首次提醒后仍按此间隔提醒，直到点击完成。</p>
+        </div>
+
+        <div id="scheduled-fields" class="form-section field-panel hidden">
+          <div class="schedule-mode-row">
+            <label><input type="radio" name="schedule-mode" value="daily" checked /> 每日某时</label>
+            <label><input type="radio" name="schedule-mode" value="once" /> 指定日期</label>
+          </div>
+          <div class="form-grid scheduled-grid">
+            <label id="daily-time-field" class="field">
+              <span>每天执行时间</span>
+              <input id="daily-time" type="time" step="1" value="09:00:00" />
+            </label>
+            <label id="once-time-field" class="field hidden">
+              <span>执行日期和时间</span>
+              <input id="once-at" type="datetime-local" step="1" />
+            </label>
+            <label class="field">
+              <span>未完成时再次提醒</span>
+              <div class="unit-input"><input id="repeat-minutes" type="number" min="1" max="10080" value="10" /><em>分钟</em></div>
+            </label>
+          </div>
+          <p class="field-help">到点后会按再次提醒间隔持续通知，点击“完成”后才停止。每日任务完成后自动等待次日。</p>
+        </div>
+
+        <label class="switch-row">
+          <span><b>保存后启用</b><small>关闭时仅保存任务，不开始计时</small></span>
+          <input id="task-active" type="checkbox" checked />
+          <i aria-hidden="true"></i>
+        </label>
+
+        <p id="form-error" class="form-error hidden" role="alert"></p>
+        <footer class="modal-footer">
+          <button id="cancel-modal" class="secondary-button" type="button">取消</button>
+          <button id="save-task" class="primary-button" type="submit">保存任务</button>
+        </footer>
+      </form>
+    </section>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="app.js"></script>
 </body>
 </html>

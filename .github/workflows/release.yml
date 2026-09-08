@@ -1,0 +1,82 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      GOARCH: amd64
+      CGO_ENABLED: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify tag and application version
+        shell: pwsh
+        run: |
+          $project = Get-Content -LiteralPath wails.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $expectedTag = 'v' + $project.info.productVersion
+          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+            throw "Tag $env:GITHUB_REF_NAME does not match wails.json version $expectedTag"
+          }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          node --check frontend/app.js
+          go test ./...
+          go test -run '^$' ./...
+
+      - name: Build distribution package
+        shell: pwsh
+        run: ./scripts/build.ps1
+
+      - name: Prepare release notes and checksums
+        shell: pwsh
+        run: |
+          $project = Get-Content -LiteralPath wails.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $version = $project.info.productVersion
+          $notes = Join-Path 'docs/releases' ($version + '.md')
+          if (Test-Path -LiteralPath $notes) {
+            Copy-Item -LiteralPath $notes -Destination release-notes.md
+          } else {
+            Set-Content -LiteralPath release-notes.md -Encoding UTF8 -Value "桌面提醒 v$version Windows 64 位版本。下载 ZIP，解压后运行桌面提醒.exe。"
+          }
+          $files = @(
+            (Join-Path 'release' ("DesktopReminder-windows-amd64-v$version.zip")),
+            (Join-Path ("release/windows-amd64-v$version") '桌面提醒.exe')
+          )
+          $checksums = foreach ($file in $files) {
+            $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256
+            '{0}  {1}' -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $file)
+          }
+          Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ASCII -Value $checksums
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 桌面提醒 ${{ github.ref_name }}
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            release/DesktopReminder-windows-amd64-v*.zip
+            release/windows-amd64-v*/桌面提醒.exe
+            release/SHA256SUMS.txt
