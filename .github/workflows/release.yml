@@ -68,7 +68,7 @@ jobs:
             $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256
             '{0}  {1}' -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $file)
           }
-          Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding ASCII -Value $checksums
+          Set-Content -LiteralPath release/SHA256SUMS.txt -Encoding UTF8 -Value $checksums
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
